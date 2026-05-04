@@ -5,7 +5,14 @@ import { Screen, TopBar } from "~/components/Screen";
 import { FeedbackOverlay } from "~/components/FeedbackOverlay";
 import { useEffects } from "~/components/Effects";
 import { sfx } from "~/lib/audio";
-import { WORLDS, type GameMode } from "~/lib/constants";
+import {
+  BOSSES,
+  SHOP_ITEMS,
+  WORLDS,
+  type Boss,
+  type GameMode,
+  type ShopItemId,
+} from "~/lib/constants";
 import {
   computeEndResult,
   makeQuestion,
@@ -22,6 +29,12 @@ type ResultView = {
   score: number;
   correct: number;
   total: number;
+  bossWin?: boolean;
+  bossReward?: number;
+  bossFirstDefeat?: boolean;
+  endlessReached?: number;
+  endlessNewRecord?: boolean;
+  endlessPrevRecord?: number;
 };
 
 export default function Play() {
@@ -30,7 +43,10 @@ export default function Play() {
 
   const tabuadaNum = parseInt(tabuada ?? "0", 10) || 0;
   const validMode: GameMode =
-    mode === "adventure" || mode === "training" || mode === "boss"
+    mode === "adventure" ||
+    mode === "training" ||
+    mode === "boss" ||
+    mode === "endless"
       ? mode
       : "training";
 
@@ -70,22 +86,26 @@ function PlaySession({
   onRestart: () => void;
   onHome: () => void;
 }) {
-  const { update } = usePlayerState();
+  const { state, update } = usePlayerState();
   const effects = useEffects();
+
+  const boss: Boss | null =
+    mode === "boss" ? BOSSES.find((b) => b.tabuada === tabuada) ?? null : null;
 
   // Game session is mutated via session.current (avoids re-render churn during
   // animations); a separate `tick` state triggers UI updates at controlled moments.
   // Lazy init runs initSession() only once on first render.
   const [session] = useState<{ current: GameSession }>(() => ({
-    current: initSession(mode, tabuada),
+    current: initSession(mode, tabuada, boss),
   }));
   const [, tick] = useState(0);
   const forceRender = useCallback(() => tick((n) => n + 1), []);
 
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [pickedValue, setPickedValue] = useState<number | null>(null);
+  const [hiddenOptions, setHiddenOptions] = useState<Set<number>>(new Set());
   const [quitOpen, setQuitOpen] = useState(false);
-  const [bossTimeLeft, setBossTimeLeft] = useState(60);
+  const [bossTimeLeft, setBossTimeLeft] = useState(boss?.timeLimit ?? 60);
   const [result, setResult] = useState<ResultView | null>(null);
 
   // Initial question
@@ -117,13 +137,21 @@ function PlaySession({
   function advance() {
     const g = session.current;
     if (g.finished) return;
-    if (g.mode !== "boss" && g.current >= g.total) return finish();
-    if (g.lives <= 0) return finish();
+    if (g.mode === "boss") {
+      if (g.bossHp <= 0) return finish();
+      if (g.lives <= 0) return finish();
+    } else if (g.mode === "endless") {
+      if (g.lives <= 0) return finish();
+    } else {
+      if (g.current >= g.total) return finish();
+      if (g.lives <= 0) return finish();
+    }
 
     g.current++;
     g.answered = false;
     g.q = makeQuestion(g);
     setPickedValue(null);
+    setHiddenOptions(new Set());
     forceRender();
   }
 
@@ -137,7 +165,12 @@ function PlaySession({
     if (isCorrect) {
       g.correct++;
       g.score += g.mode === "boss" ? 10 : 5;
-      sfx.correct();
+      if (g.mode === "boss") {
+        g.bossHp = Math.max(0, g.bossHp - 1);
+        sfx.bossHit();
+      } else {
+        sfx.correct();
+      }
       effects.spawnCoin(btn);
       sfx.coin();
       update((s) => {
@@ -153,7 +186,11 @@ function PlaySession({
           },
         };
       });
-      setFeedback({ text: "CERTO!", type: "correct", key: Date.now() });
+      setFeedback({
+        text: g.mode === "boss" ? "DANO!" : "CERTO!",
+        type: "correct",
+        key: Date.now(),
+      });
       window.setTimeout(() => {
         setFeedback(null);
         advance();
@@ -177,16 +214,89 @@ function PlaySession({
     forceRender();
   }
 
+  // ---- Power-up usage ----
+  function usePowerUp(id: ShopItemId) {
+    const owned = state.inventory[id] ?? 0;
+    if (owned <= 0) return;
+    const g = session.current;
+    if (g.finished) return;
+
+    if (id === "life") {
+      g.lives++;
+      sfx.powerup();
+    } else if (id === "hint") {
+      if (!g.q || g.answered) return;
+      // Hide 2 wrong options
+      const wrong = g.q.options.filter((o) => o !== g.q!.correct);
+      const toHide = new Set<number>();
+      while (toHide.size < 2 && wrong.length) {
+        const i = Math.floor(Math.random() * wrong.length);
+        toHide.add(wrong[i]);
+        wrong.splice(i, 1);
+      }
+      setHiddenOptions(toHide);
+      sfx.powerup();
+    } else if (id === "skip") {
+      if (!g.q || g.answered) return;
+      g.answered = true;
+      sfx.powerup();
+      setFeedback({
+        text: "SALTOU!",
+        type: "correct",
+        key: Date.now(),
+      });
+      window.setTimeout(() => {
+        setFeedback(null);
+        advance();
+      }, 700);
+    } else if (id === "freeze") {
+      if (g.mode !== "boss" || !g.bossEndTime) return;
+      g.bossEndTime += 10_000;
+      sfx.powerup();
+    }
+
+    update((s) => ({
+      ...s,
+      inventory: { ...s.inventory, [id]: (s.inventory[id] ?? 0) - 1 },
+    }));
+    forceRender();
+  }
+
   function finish() {
     const g = session.current;
     if (g.finished) return;
     g.finished = true;
     const r = computeEndResult(g);
 
-    update((s) => applyEndUpdates(s, g, r));
+    let bossReward = 0;
+    let bossFirstDefeat = false;
+    if (g.mode === "boss" && r.bossWin && boss) {
+      const alreadyDefeated = !!state.bossesDefeated[boss.tabuada];
+      bossFirstDefeat = !alreadyDefeated;
+      if (bossFirstDefeat) bossReward = boss.reward;
+    }
+
+    let endlessReached: number | undefined;
+    let endlessNewRecord = false;
+    let endlessPrevRecord: number | undefined;
+    if (g.mode === "endless") {
+      endlessReached = g.correct;
+      endlessPrevRecord = state.endlessHighScore;
+      endlessNewRecord = g.correct > state.endlessHighScore;
+    }
+
+    update((s) => applyEndUpdates(s, g, r, boss, bossReward));
 
     if (g.mode === "adventure") sfx.star();
-    if (r.stars >= 2 || g.score >= 50) effects.spawnConfetti();
+    if (g.mode === "boss" && r.bossWin) sfx.bossDefeat();
+    if (g.mode === "endless" && endlessNewRecord && g.correct > 0) sfx.star();
+    if (
+      r.stars >= 2 ||
+      (g.mode === "boss" && r.bossWin) ||
+      (g.mode === "endless" && endlessNewRecord && g.correct >= 5)
+    ) {
+      effects.spawnConfetti();
+    }
 
     setResult({
       stars: r.stars,
@@ -195,6 +305,12 @@ function PlaySession({
       score: g.score,
       correct: g.correct,
       total: g.correct + g.wrong,
+      bossWin: r.bossWin,
+      bossReward,
+      bossFirstDefeat,
+      endlessReached,
+      endlessNewRecord,
+      endlessPrevRecord,
     });
   }
 
@@ -218,14 +334,19 @@ function PlaySession({
 
   // ---- Render: game ----
   const g = session.current;
+  const world = mode === "adventure" ? WORLDS.find((w) => w.num === tabuada) : null;
   const title =
     mode === "boss"
-      ? "BOSS FIGHT 👹"
+      ? boss
+        ? `${boss.emoji} ${boss.name}`
+        : "BOSS FIGHT"
       : mode === "adventure"
         ? `TABUADA DO ${tabuada}`
-        : tabuada === 0
-          ? "MISTURA TUDO"
-          : `TREINO ${tabuada}×`;
+        : mode === "endless"
+          ? "♾️ MARATONA"
+          : tabuada === 0
+            ? "MISTURA TUDO"
+            : `TREINO ${tabuada}×`;
 
   return (
     <Screen>
@@ -272,17 +393,37 @@ function PlaySession({
           🪙 {g.score}
         </div>
         <div className="border-[3px] border-pixel-green bg-pixel-dark px-3 py-2 text-pixel-green shadow-pixel">
-          {mode === "boss" ? `Q${g.current}` : `${g.current}/${g.total}`}
+          {mode === "boss"
+            ? `⏱ ${Math.ceil(bossTimeLeft)}s`
+            : mode === "endless"
+              ? `Q${g.current}`
+              : `${g.current}/${g.total}`}
         </div>
       </div>
 
-      {/* Progress / Timer */}
-      {mode === "boss" ? (
-        <div className="h-5 w-full overflow-hidden border-[3px] border-pixel-red bg-pixel-dark">
-          <div
-            className="h-full bg-gradient-to-r from-pixel-red to-pixel-orange transition-[width] duration-100"
-            style={{ width: `${(bossTimeLeft / 60) * 100}%` }}
-          />
+      {/* Progress / Boss HP / Timer / Endless record */}
+      {mode === "boss" && boss ? (
+        <BossPanel
+          boss={boss}
+          hp={g.bossHp}
+          maxHp={g.bossMaxHp}
+          timeLeft={bossTimeLeft}
+        />
+      ) : mode === "endless" ? (
+        <EndlessBanner
+          current={g.correct}
+          record={state.endlessHighScore}
+        />
+      ) : mode === "adventure" && world ? (
+        <div className="flex items-center gap-2 font-[family-name:var(--font-pixel)] text-[10px] text-pixel-blue">
+          <span className="text-xl">{world.emoji}</span>
+          <span>{world.name.toUpperCase()}</span>
+          <div className="ml-auto h-3 flex-1 overflow-hidden border-[3px] border-pixel-gold bg-pixel-dark">
+            <div
+              className="h-full bg-gradient-to-r from-pixel-green to-pixel-gold transition-[width] duration-300"
+              style={{ width: `${(g.current / g.total) * 100}%` }}
+            />
+          </div>
         </div>
       ) : (
         <div className="h-4 w-full overflow-hidden border-[3px] border-pixel-gold bg-pixel-dark">
@@ -327,23 +468,199 @@ function PlaySession({
             answered={g.answered}
             picked={pickedValue === opt}
             isCorrectAnswer={opt === g.q!.correct}
+            hidden={hiddenOptions.has(opt)}
             onClick={(e) => answer(opt, e.currentTarget)}
           />
         ))}
       </div>
+
+      {/* Power-up bar */}
+      <PowerUpBar
+        inventory={state.inventory}
+        mode={mode}
+        answered={g.answered}
+        onUse={usePowerUp}
+      />
     </Screen>
+  );
+}
+
+/* ============================================================
+   BossPanel — boss portrait + HP bar + timer.
+   ============================================================ */
+function BossPanel({
+  boss,
+  hp,
+  maxHp,
+  timeLeft,
+}: {
+  boss: Boss;
+  hp: number;
+  maxHp: number;
+  timeLeft: number;
+}) {
+  const hpPct = maxHp > 0 ? (hp / maxHp) * 100 : 0;
+  const lowHp = hpPct <= 33;
+  return (
+    <div
+      className="border-[5px] border-pixel-dark p-3 shadow-pixel"
+      style={{
+        background: `linear-gradient(135deg, ${boss.bgFrom} 0%, ${boss.bgTo} 100%)`,
+      }}
+    >
+      <div className="flex items-center gap-3">
+        <div
+          className="text-5xl leading-none"
+          style={{
+            filter: "drop-shadow(0 3px 0 rgba(0,0,0,0.6))",
+            animation: lowHp ? "wrong-shake 0.6s infinite" : undefined,
+          }}
+        >
+          {boss.emoji}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-[family-name:var(--font-pixel)] text-[10px] text-pixel-gold text-shadow-pixel">
+            {boss.name}
+          </div>
+          <div className="mt-1.5 h-4 w-full overflow-hidden border-[3px] border-pixel-dark bg-black">
+            <div
+              className={`h-full transition-[width] duration-300 ${
+                lowHp ? "bg-pixel-orange" : "bg-pixel-red"
+              }`}
+              style={{ width: `${hpPct}%` }}
+            />
+          </div>
+          <div className="mt-1 font-[family-name:var(--font-pixel)] text-[8px] text-white">
+            HP: {hp}/{maxHp}
+          </div>
+        </div>
+      </div>
+      <div className="mt-2 h-2 w-full overflow-hidden border-[2px] border-pixel-dark bg-black">
+        <div
+          className="h-full bg-gradient-to-r from-pixel-blue to-pixel-purple transition-[width] duration-100"
+          style={{ width: `${(timeLeft / boss.timeLimit) * 100}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   EndlessBanner — current run + personal record.
+   ============================================================ */
+function EndlessBanner({
+  current,
+  record,
+}: {
+  current: number;
+  record: number;
+}) {
+  const beating = record > 0 && current >= record;
+  return (
+    <div
+      className="
+        flex items-center justify-between gap-3 border-[4px] border-pixel-blue
+        bg-pixel-dark p-3 shadow-pixel
+      "
+    >
+      <div className="font-[family-name:var(--font-pixel)] text-[10px] text-pixel-blue">
+        ♾️ MARATONA
+      </div>
+      <div className="flex items-center gap-3 font-[family-name:var(--font-pixel)] text-[10px]">
+        <span className="text-pixel-green">
+          ACERTOS: <span className="text-white">{current}</span>
+        </span>
+        <span className={beating ? "text-pixel-gold" : "text-pixel-orange"}>
+          {beating ? "🥇" : "🏅"} {record}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   PowerUpBar — quick-use shortcuts for owned items.
+   ============================================================ */
+function PowerUpBar({
+  inventory,
+  mode,
+  answered,
+  onUse,
+}: {
+  inventory: PlayerState["inventory"];
+  mode: GameMode;
+  answered: boolean;
+  onUse: (id: ShopItemId) => void;
+}) {
+  const totalOwned = SHOP_ITEMS.reduce(
+    (sum, i) => sum + (inventory[i.id] ?? 0),
+    0,
+  );
+  if (totalOwned === 0) return null;
+
+  return (
+    <div className="grid grid-cols-4 gap-2">
+      {SHOP_ITEMS.map((item) => {
+        const owned = inventory[item.id] ?? 0;
+        // Disable conditions per power-up:
+        let disabled = owned <= 0;
+        if (item.id === "hint" && answered) disabled = true;
+        if (item.id === "skip" && answered) disabled = true;
+        if (item.id === "freeze" && mode !== "boss") disabled = true;
+        return (
+          <button
+            key={item.id}
+            onClick={() => !disabled && onUse(item.id)}
+            disabled={disabled}
+            aria-label={`Usar ${item.name}`}
+            className={`
+              pixel-btn relative flex flex-col items-center gap-0.5 px-2 py-2
+              text-[8px] text-white
+              ${disabled ? "bg-[#333] opacity-50" : "bg-pixel-purple"}
+            `}
+          >
+            <span className="text-2xl leading-none">{item.emoji}</span>
+            <span className="leading-tight">x{owned}</span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
 /* ============================================================
    Helpers
    ============================================================ */
-function initSession(mode: GameMode, tabuada: number): GameSession {
+function initSession(
+  mode: GameMode,
+  tabuada: number,
+  boss: Boss | null,
+): GameSession {
   if (mode === "adventure") {
     return newGame({ mode: "adventure", tabuada, total: 10, lives: 3 });
   }
   if (mode === "boss") {
-    return newGame({ mode: "boss", tabuada: 0, total: 999, lives: 3, timeLimit: 60 });
+    if (boss) {
+      return newGame({
+        mode: "boss",
+        tabuada: boss.tabuada,
+        total: 999,
+        lives: 3,
+        timeLimit: boss.timeLimit,
+        bossHp: boss.hp,
+      });
+    }
+    return newGame({
+      mode: "boss",
+      tabuada: 0,
+      total: 999,
+      lives: 3,
+      timeLimit: 60,
+      bossHp: 6,
+    });
+  }
+  if (mode === "endless") {
+    return newGame({ mode: "endless", tabuada: 0, total: 9999, lives: 1 });
   }
   return newGame({ mode: "training", tabuada, total: 10, lives: 5 });
 }
@@ -352,9 +669,11 @@ function applyEndUpdates(
   s: PlayerState,
   g: GameSession,
   r: ReturnType<typeof computeEndResult>,
+  boss: Boss | null,
+  bossReward: number,
 ): PlayerState {
   const next = { ...s };
-  next.coins += g.score;
+  next.coins += g.score + bossReward;
 
   if (g.mode === "adventure") {
     const prev = next.worldStars[g.tabuada] || 0;
@@ -370,7 +689,20 @@ function applyEndUpdates(
     }
   } else if (g.mode === "boss") {
     if (g.score > next.bossHighScore) next.bossHighScore = g.score;
-    if (g.score >= 50) next.badges = { ...next.badges, boss50: true };
+    if (r.bossWin && boss) {
+      next.bossesDefeated = {
+        ...next.bossesDefeated,
+        [boss.tabuada]: true,
+      };
+      next.badges = { ...next.badges, boss50: true };
+      const allDefeated = BOSSES.every(
+        (b) => next.bossesDefeated[b.tabuada],
+      );
+      if (allDefeated) next.badges = { ...next.badges, bossAll: true };
+    }
+  } else if (g.mode === "endless") {
+    if (g.correct > next.endlessHighScore) next.endlessHighScore = g.correct;
+    if (g.correct >= 25) next.badges = { ...next.badges, endless25: true };
   }
 
   if (next.coins >= 500) next.badges = { ...next.badges, rich: true };
@@ -395,16 +727,20 @@ function AnswerButton({
   answered,
   picked,
   isCorrectAnswer,
+  hidden,
   onClick,
 }: {
   value: number;
   answered: boolean;
   picked: boolean;
   isCorrectAnswer: boolean;
+  hidden: boolean;
   onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   let stateClasses = "bg-pixel-blue";
-  if (answered) {
+  if (hidden) {
+    stateClasses = "bg-[#333] opacity-30";
+  } else if (answered) {
     if (picked && isCorrectAnswer) stateClasses = "bg-pixel-green animate-correct-shake";
     else if (picked && !isCorrectAnswer) stateClasses = "bg-pixel-red animate-wrong-shake";
     else if (isCorrectAnswer) stateClasses = "bg-pixel-green opacity-90";
@@ -413,11 +749,11 @@ function AnswerButton({
 
   return (
     <button
-      disabled={answered}
+      disabled={answered || hidden}
       onClick={onClick}
       className={`pixel-btn px-3 py-6 text-2xl text-white disabled:cursor-default ${stateClasses}`}
     >
-      {value}
+      {hidden ? "✖" : value}
     </button>
   );
 }
@@ -433,6 +769,12 @@ function ResultPanel({
   correct,
   total,
   mode,
+  bossWin,
+  bossReward,
+  bossFirstDefeat,
+  endlessReached,
+  endlessNewRecord,
+  endlessPrevRecord,
   onReplay,
   onHome,
 }: ResultView & {
@@ -470,6 +812,30 @@ function ResultPanel({
       <p className="my-2.5 font-[family-name:var(--font-pixel)] text-[13px] text-white">
         🪙 +{score} MOEDAS
       </p>
+
+      {mode === "boss" && bossWin && bossFirstDefeat && bossReward ? (
+        <p className="my-2.5 font-[family-name:var(--font-pixel)] text-[12px] text-pixel-gold">
+          🎁 BÓNUS 1ª VEZ: +{bossReward} 🪙
+        </p>
+      ) : null}
+
+      {mode === "endless" && endlessReached !== undefined ? (
+        <div className="my-3">
+          <p className="font-[family-name:var(--font-pixel)] text-[14px] text-pixel-blue">
+            CHEGASTE A{" "}
+            <span className="text-pixel-gold">{endlessReached}</span>!
+          </p>
+          {endlessNewRecord && endlessReached > 0 ? (
+            <p className="mt-2 animate-bounce-slow font-[family-name:var(--font-pixel)] text-[13px] text-pixel-gold">
+              🥇 NOVO RECORD!
+            </p>
+          ) : (
+            <p className="mt-2 font-[family-name:var(--font-pixel)] text-[10px] text-pixel-orange">
+              🏅 RECORD: {endlessPrevRecord ?? 0}
+            </p>
+          )}
+        </div>
+      ) : null}
 
       <div className="mt-6 flex flex-wrap justify-center gap-3">
         <button

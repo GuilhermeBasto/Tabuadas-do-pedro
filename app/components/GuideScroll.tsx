@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { sfx } from "~/lib/audio";
-import { BADGES, WORLDS } from "~/lib/constants";
+import { BADGES, BOSSES, SHOP_ITEMS, WORLDS } from "~/lib/constants";
 import { usePlayerState } from "~/lib/storage";
 
-type TabId = "modos" | "mundos" | "estrelas" | "trofeus";
+type TabId = "modos" | "bosses" | "loja" | "trofeus";
 
 const TABS: { id: TabId; emoji: string; label: string }[] = [
   { id: "modos", emoji: "🎮", label: "MODOS" },
-  { id: "mundos", emoji: "🌍", label: "MUNDOS" },
-  { id: "estrelas", emoji: "⭐", label: "ESTRELAS" },
+  { id: "bosses", emoji: "👹", label: "BOSSES" },
+  { id: "loja", emoji: "🛒", label: "LOJA" },
   { id: "trofeus", emoji: "🏆", label: "TROFÉUS" },
 ];
 
@@ -95,8 +95,8 @@ export function GuideScroll({
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-3 py-3 text-[#3d2410]">
           {tab === "modos" && <ModosSection />}
-          {tab === "mundos" && <MundosSection />}
-          {tab === "estrelas" && <EstrelasSection />}
+          {tab === "bosses" && <BossesSection />}
+          {tab === "loja" && <LojaSection />}
           {tab === "trofeus" && <TrofeusSection badges={state.badges} />}
         </div>
       </div>
@@ -150,13 +150,23 @@ function ModosSection() {
     <div>
       <SectionTitle>COMO SE JOGA?</SectionTitle>
       <Row icon="🗺️" title="AVENTURA">
-        10 perguntas, <b>3 vidas</b>. Acerta muito para ganhar até 3 estrelas!
+        10 perguntas, <b>3 vidas</b>. Cada mundo é uma tabuada. Acerta muito
+        para ganhar até <b>3 estrelas</b>!
       </Row>
       <Row icon="🎯" title="TREINO">
         10 perguntas, <b>5 vidas</b>. Pratica numa tabuada à tua escolha.
       </Row>
-      <Row icon="👹" title="BOSS FIGHT">
-        <b>60 segundos</b> de pura ação! Acerta o máximo que conseguires.
+      <Row icon="👹" title="BOSSES">
+        Derrota o <b>chefe</b> de cada mundo! Tem barra de vida — cada acerto
+        tira HP. Erra e o boss ataca-te.
+      </Row>
+      <Row icon="♾️" title="MARATONA">
+        Perguntas <b>infinitas</b>, só <b>1 vida</b>! Vê até onde consegues
+        chegar e bate o teu próprio record.
+      </Row>
+      <Row icon="🛒" title="LOJA">
+        Gasta as moedas em <b>power-ups</b> que ajudam no jogo: pista 50/50,
+        salto, vida extra, congelar tempo.
       </Row>
       <div
         className="
@@ -164,75 +174,93 @@ function ModosSection() {
           text-[10px] leading-snug text-[#5a3a1a]
         "
       >
-        💡 <b>DICA:</b> cada acerto dá <b>+1 moeda</b>. No fim, ganhas tudo o
-        que marcaste como pontuação extra!
+        💡 <b>ESTRELAS (Aventura):</b><br />
+        ≥ 95% = 🌟🌟🌟 · ≥ 75% = 🌟🌟 · ≥ 50% = 🌟
       </div>
     </div>
   );
 }
 
-function MundosSection() {
+function BossesSection() {
   return (
     <div>
-      <SectionTitle>OS 10 MUNDOS</SectionTitle>
-      <p className="mb-2.5 text-[11px] leading-snug">
-        Cada tabuada é um mundo mágico. Conquista todos!
+      <SectionTitle>OS 10 BOSSES</SectionTitle>
+      <p className="mb-2 text-[11px] leading-snug">
+        Cada mundo tem um <b>chefe</b>. Tens de passar o mundo na Aventura
+        primeiro para o desbloquear!
       </p>
-      <div className="grid grid-cols-2 gap-1.5">
-        {WORLDS.map((w) => (
-          <div
-            key={w.num}
-            className="
-              flex items-center gap-1.5 border-2 border-[#8b5a2b] bg-[#fff4d6]
-              px-1.5 py-1
-            "
-          >
-            <span className="text-lg leading-none shrink-0">{w.emoji}</span>
-            <div className="font-[family-name:var(--font-pixel)] text-[7px] text-[#5a3a1a] min-w-0">
-              <div>×{w.num}</div>
-              <div className="mt-0.5 opacity-80 truncate">
-                {w.name.toUpperCase()}
+      <p className="mb-2.5 text-[10px] leading-snug opacity-90">
+        ❤️ Acerta para tirar HP do boss · ❌ Erra e perdes vida · 👑 1ª vitória
+        dá bónus de moedas.
+      </p>
+      <div className="space-y-1">
+        {BOSSES.map((b) => {
+          const world = WORLDS.find((w) => w.num === b.tabuada);
+          return (
+            <div
+              key={b.tabuada}
+              className="
+                flex items-center gap-2 border-2 border-[#8b5a2b] bg-[#fff4d6] p-1.5
+              "
+            >
+              <span className="text-2xl leading-none shrink-0">{b.emoji}</span>
+              <div className="flex-1 min-w-0">
+                <div className="font-[family-name:var(--font-pixel)] text-[8px] text-[#5a3a1a]">
+                  {b.name}
+                </div>
+                <div className="mt-0.5 text-[10px] opacity-80">
+                  {world?.emoji} ×{b.tabuada} · HP {b.hp} · {b.timeLimit}s
+                </div>
+              </div>
+              <div className="font-[family-name:var(--font-pixel)] text-[8px] text-pixel-gold-dark shrink-0">
+                +{b.reward}🪙
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function EstrelasSection() {
-  const tiers = [
-    { stars: 3, emoji: "🌟", title: "PERFEITO!", req: "≥ 95% certos" },
-    { stars: 2, emoji: "🎉", title: "MUITO BEM!", req: "≥ 75% certos" },
-    { stars: 1, emoji: "👍", title: "BOM TRABALHO!", req: "≥ 50% certos" },
-    { stars: 0, emoji: "💪", title: "QUASE!", req: "< 50% certos" },
-  ];
+function LojaSection() {
   return (
     <div>
-      <SectionTitle>SISTEMA DE ESTRELAS</SectionTitle>
+      <SectionTitle>LOJA DE POWER-UPS</SectionTitle>
       <p className="mb-2.5 text-[11px] leading-snug">
-        Só na <b>Aventura</b>. Quanto mais acertas, mais estrelas ganhas!
+        Compra power-ups com as moedas que ganhas a jogar. Usa-os no meio de
+        qualquer ronda!
       </p>
       <div className="space-y-1.5">
-        {tiers.map((t) => (
+        {SHOP_ITEMS.map((item) => (
           <div
-            key={t.stars}
+            key={item.id}
             className="
               flex items-center gap-2 border-2 border-[#8b5a2b] bg-[#fff4d6] p-1.5
             "
           >
-            <div className="w-14 shrink-0 text-center text-sm tracking-tight">
-              {"⭐".repeat(t.stars) + "☆".repeat(3 - t.stars)}
-            </div>
+            <span className="text-2xl leading-none shrink-0">{item.emoji}</span>
             <div className="flex-1 min-w-0">
               <div className="font-[family-name:var(--font-pixel)] text-[8px] text-[#5a3a1a]">
-                {t.emoji} {t.title}
+                {item.name}
               </div>
-              <div className="text-[10px] opacity-80">{t.req}</div>
+              <div className="mt-0.5 text-[10px] leading-snug opacity-85">
+                {item.desc}
+              </div>
+            </div>
+            <div className="font-[family-name:var(--font-pixel)] text-[8px] text-pixel-gold-dark shrink-0">
+              {item.price}🪙
             </div>
           </div>
         ))}
+      </div>
+      <div
+        className="
+          mt-2 border-2 border-[#8b5a2b] bg-[#fff4d6] p-2
+          text-[10px] leading-snug text-[#5a3a1a]
+        "
+      >
+        💡 <b>+1 moeda por cada acerto</b> + bónus da pontuação no fim.
       </div>
     </div>
   );
@@ -246,7 +274,10 @@ const BADGE_HINTS: Record<string, string> = {
   perfect: "Aventura com 100% de acertos",
   streak5: "5 acertos seguidos",
   streak10: "10 acertos seguidos",
-  boss50: "50+ pontos no Boss Fight",
+  boss50: "Derrota o teu primeiro boss",
+  bossAll: "Derrota os 10 bosses",
+  endless25: "Acerta 25+ na Maratona",
+  shopper: "Compra qualquer item da loja",
   rich: "Junta 500 moedas",
   master2: "3 estrelas na tabuada do 2",
   master5: "3 estrelas na tabuada do 5",

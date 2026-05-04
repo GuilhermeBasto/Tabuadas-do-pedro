@@ -64,6 +64,29 @@ export const sfx = {
   click() {
     tone(440, 0.05, "square", 0.06);
   },
+  bossHit() {
+    // sharp punchy hit
+    tone(180, 0.06, "square", 0.12);
+    setTimeout(() => tone(120, 0.1, "sawtooth", 0.1), 40);
+  },
+  bossDefeat() {
+    // long fanfare descending then ascending
+    tone(523, 0.12);
+    setTimeout(() => tone(659, 0.12), 100);
+    setTimeout(() => tone(784, 0.12), 200);
+    setTimeout(() => tone(1047, 0.18), 300);
+    setTimeout(() => tone(1319, 0.32), 460);
+  },
+  purchase() {
+    // cheerful cash-register-ish chime
+    tone(880, 0.08, "square", 0.1);
+    setTimeout(() => tone(1175, 0.1, "square", 0.1), 70);
+    setTimeout(() => tone(1568, 0.16, "triangle", 0.1), 150);
+  },
+  powerup() {
+    tone(660, 0.06, "triangle", 0.1);
+    setTimeout(() => tone(990, 0.1, "triangle", 0.1), 50);
+  },
 };
 
 /**

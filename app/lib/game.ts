@@ -14,6 +14,8 @@ export type GameSession = {
   lives: number;
   timeLimit: number | null;
   bossEndTime: number | null;
+  bossHp: number; // remaining HP (boss mode only; 0 in other modes)
+  bossMaxHp: number;
   current: number;
   score: number;
   correct: number;
@@ -30,9 +32,11 @@ export type GameOptions = {
   total: number;
   lives: number;
   timeLimit?: number | null;
+  bossHp?: number;
 };
 
 export function newGame(opts: GameOptions): GameSession {
+  const isBoss = opts.mode === "boss";
   return {
     mode: opts.mode,
     tabuada: opts.tabuada,
@@ -40,9 +44,9 @@ export function newGame(opts: GameOptions): GameSession {
     lives: opts.lives,
     timeLimit: opts.timeLimit ?? null,
     bossEndTime:
-      opts.mode === "boss" && opts.timeLimit
-        ? Date.now() + opts.timeLimit * 1000
-        : null,
+      isBoss && opts.timeLimit ? Date.now() + opts.timeLimit * 1000 : null,
+    bossHp: isBoss ? opts.bossHp ?? 6 : 0,
+    bossMaxHp: isBoss ? opts.bossHp ?? 6 : 0,
     current: 0,
     score: 0,
     correct: 0,
@@ -92,6 +96,7 @@ export type EndResult = {
   title: string;
   emoji: string;
   accuracy: number;
+  bossWin?: boolean;
 };
 
 export function computeEndResult(g: GameSession): EndResult {
@@ -106,12 +111,18 @@ export function computeEndResult(g: GameSession): EndResult {
   }
 
   if (g.mode === "boss") {
+    const bossWin = g.bossMaxHp > 0 && g.bossHp <= 0;
     return {
       stars: 0,
-      title: "BOSS FIGHT!",
-      emoji: g.score >= 50 ? "👑" : "👹",
+      title: bossWin ? "BOSS DERROTADO!" : "DERROTA...",
+      emoji: bossWin ? "👑" : "💀",
       accuracy,
+      bossWin,
     };
+  }
+
+  if (g.mode === "endless") {
+    return { stars: 0, title: "MARATONA!", emoji: "♾️", accuracy };
   }
 
   return { stars: 0, title: "TREINO COMPLETO!", emoji: "🎯", accuracy };

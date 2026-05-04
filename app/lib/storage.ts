@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
+import type { ShopItemId } from "./constants";
 
 const STORAGE_KEY = "tabuadas-pedro-v1";
+
+export type Inventory = Record<ShopItemId, number>;
+
+export const EMPTY_INVENTORY: Inventory = {
+  hint: 0,
+  skip: 0,
+  life: 0,
+  freeze: 0,
+};
 
 export type PlayerState = {
   coins: number;
@@ -10,6 +20,9 @@ export type PlayerState = {
   worldCleared: Record<number, boolean>;
   badges: Record<string, boolean>;
   bossHighScore: number;
+  endlessHighScore: number;
+  inventory: Inventory;
+  bossesDefeated: Record<number, boolean>;
 };
 
 export const DEFAULT_STATE: PlayerState = {
@@ -20,6 +33,9 @@ export const DEFAULT_STATE: PlayerState = {
   worldCleared: {},
   badges: {},
   bossHighScore: 0,
+  endlessHighScore: 0,
+  inventory: { ...EMPTY_INVENTORY },
+  bossesDefeated: {},
 };
 
 function loadFromStorage(): PlayerState {
@@ -27,7 +43,14 @@ function loadFromStorage(): PlayerState {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_STATE;
-    return { ...DEFAULT_STATE, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw) as Partial<PlayerState>;
+    // Merge defensively: older saves may not have inventory/bossesDefeated.
+    return {
+      ...DEFAULT_STATE,
+      ...parsed,
+      inventory: { ...EMPTY_INVENTORY, ...(parsed.inventory ?? {}) },
+      bossesDefeated: { ...(parsed.bossesDefeated ?? {}) },
+    };
   } catch {
     return DEFAULT_STATE;
   }

@@ -107,9 +107,21 @@ export default function Home() {
         <MenuButton emoji="🎯" label="TREINO" onClick={() => go("/training")} bg="bg-pixel-green" />
         <MenuButton
           emoji="👹"
-          label={<>BOSS<br />FIGHT</>}
-          onClick={() => go("/play/boss")}
+          label="BOSSES"
+          onClick={() => go("/bosses")}
           bg="bg-pixel-purple"
+        />
+        <MenuButton
+          emoji="♾️"
+          label="MARATONA"
+          onClick={() => go("/play/endless")}
+          bg="bg-pixel-blue"
+        />
+        <MenuButton
+          emoji="🛒"
+          label="LOJA"
+          onClick={() => go("/shop")}
+          bg="bg-pixel-pink"
         />
         <MenuButton
           emoji="🏆"
@@ -172,13 +184,13 @@ function MenuButton({
     <button
       onClick={onClick}
       className={`
-        pixel-btn min-h-[130px] flex-col gap-3 px-3 py-5 text-white
+        pixel-btn min-h-[120px] flex-col gap-3 px-3 py-5 text-white
         flex items-center justify-center
         ${bg}
         font-[family-name:var(--font-pixel)] text-[11px] leading-relaxed
       `}
     >
-      <span className="text-[40px] leading-none">{emoji}</span>
+      <span className="text-[36px] leading-none">{emoji}</span>
       <span>{label}</span>
     </button>
   );
