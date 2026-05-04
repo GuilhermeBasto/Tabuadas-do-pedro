@@ -345,7 +345,7 @@ function initSession(mode: GameMode, tabuada: number): GameSession {
   if (mode === "boss") {
     return newGame({ mode: "boss", tabuada: 0, total: 999, lives: 3, timeLimit: 60 });
   }
-  return newGame({ mode: "training", tabuada, total: 10, lives: 99 });
+  return newGame({ mode: "training", tabuada, total: 10, lives: 5 });
 }
 
 function applyEndUpdates(

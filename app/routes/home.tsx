@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
+import { GuideScroll } from "~/components/GuideScroll";
 import { Screen } from "~/components/Screen";
 import { sfx, initAudioUnlock } from "~/lib/audio";
 import {
@@ -13,6 +14,7 @@ export default function Home() {
   const navigate = useNavigate();
   const { state } = usePlayerState();
   const [canInstall, setCanInstall] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   useEffect(() => {
     initAudioUnlock();
@@ -31,6 +33,24 @@ export default function Home() {
 
   return (
     <Screen>
+      {/* Pergaminho do Sábio — floating help button */}
+      <button
+        onClick={() => {
+          sfx.click();
+          setGuideOpen(true);
+        }}
+        aria-label="Pergaminho do Sábio"
+        className="
+          pixel-btn absolute right-3 top-3 z-10 flex h-11 w-11 items-center
+          justify-center bg-[#d4a574] text-lg
+        "
+        style={{ borderColor: "#5a3a1a" }}
+      >
+        <span className="inline-block animate-wiggle">📜</span>
+      </button>
+
+      <GuideScroll open={guideOpen} onClose={() => setGuideOpen(false)} />
+
       {/* Logo */}
       <div className="mt-2.5 text-center">
         <div

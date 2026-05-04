@@ -7,7 +7,7 @@ Jogo de tabuadas estilo pixel-art com 3 modos, prémios e coleção de troféus.
 | Modo | Como funciona |
 |---|---|
 | 🗺️ **Aventura** | 10 perguntas sobre uma tabuada específica, **3 vidas**. Ganhas até 3 estrelas conforme a precisão. |
-| 🎯 **Treino** | 10 perguntas, **vidas infinitas** (99). Podes escolher uma tabuada ou "mistura tudo". Sem pressão. |
+| 🎯 **Treino** | 10 perguntas, **5 vidas**. Podes escolher uma tabuada ou "mistura tudo". |
 | 👹 **Boss Fight** | **60 segundos** para acertar o máximo possível. Mistura todas as tabuadas. 3 vidas. |
 
 ## 🌍 Os 10 Mundos (tabuadas da Aventura)
