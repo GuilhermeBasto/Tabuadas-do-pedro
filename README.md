@@ -127,26 +127,6 @@ A app fica com ícone próprio, abre em ecrã inteiro, e funciona offline depois
 
 ---
 
-## 🚀 Deploy
-
-### Netlify
-```bash
-npm run build
-# Arrasta a pasta `build/client/` para https://app.netlify.com/drop
-```
-
-### GitHub Pages
-1. `npm run build`
-2. Push da pasta `build/client/` para a branch `gh-pages` (ou usar GitHub Actions).
-3. Settings → Pages → Source: `gh-pages` branch.
-
-### Cloudflare Pages / Vercel
-Liga o repo, define:
-- Build command: `npm run build`
-- Output directory: `build/client`
-
----
-
 ## 🎯 Adicionar novas funcionalidades
 
 ### Novo modo de jogo
