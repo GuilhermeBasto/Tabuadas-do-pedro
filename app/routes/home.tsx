@@ -131,6 +131,18 @@ export default function Home() {
         />
       </div>
 
+      <button
+        onClick={() => go("/escola")}
+        className="
+          pixel-btn mt-1 flex items-center justify-center gap-3 bg-pixel-blue
+          px-4 py-4 font-[family-name:var(--font-pixel)] text-[11px] text-white
+        "
+      >
+        <span className="text-2xl">📚</span>
+        <span>ESCOLA — JOGOS NOVOS</span>
+        <span className="text-2xl">✨</span>
+      </button>
+
       {canInstall && (
         <button
           onClick={installApp}
